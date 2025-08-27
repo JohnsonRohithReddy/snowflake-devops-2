@@ -33,4 +33,4 @@ jobs:
           pip install schemachange
           
           echo "Step 2: Running schemachange"
-          schemachange deploy --config-file-path $GITHUB_WORKSPACE/bronze/migrations/config/schemachange-config.yml
+          schemachange deploy --config-folder $GITHUB_WORKSPACE/bronze/migrations/config
