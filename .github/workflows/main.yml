@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy-snowflake-changes-job:
+  deploy-bronze-changes:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,51 +21,58 @@ jobs:
         with:
           python-version: 3.8.x
 
-      - name: Install PyYAML
-        run: pip install pyyaml
+      - name: Install dependencies
+        run: |
+          pip install pyyaml schemachange
+          python -c "import yaml; print('PyYAML loaded successfully')"
 
-      - name: Run schemachange for bronze
+      - name: Deploy bronze changes
         env:
           SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
           SF_ROLE: ${{ secrets.SF_ROLE }}
           SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
-          SF_DATABASE: ${{ secrets.SF_DATABASE_DEV }}  # Optional override
+          SF_DATABASE_DEV: ${{ secrets.SF_DATABASE_DEV }}  # Optional override
           SF_SCHEMA_BRONZE: ${{ secrets.SF_SCHEMA_BRONZE }}  # Optional override
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          python --version
-          echo "Step 1: Installing schemachange"
-          pip install schemachange
-          
           echo "Step 2: Deploying bronze"
           if [ -d "$GITHUB_WORKSPACE/bronze/migrations" ]; then
             echo "Loading variables from bronze-var.yml"
-            # Debug: Check if file exists and is readable
             if [ -f "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ] && [ -r "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ]; then
               echo "File found and readable, parsing..."
-              vars=$(python -c "import yaml, json; f = open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml'); try: data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); result = json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}); print(result) except Exception as e: print(f'Error: {e}')" 2>/dev/null)
-              echo "Raw parsed vars: $vars"
-              # Validate JSON
+              vars=$(python -c "import yaml, json; with open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml') as f: data = yaml.safe_load(f); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
+              echo "Parsed vars: $vars"
               if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
                 echo "Error: Invalid or empty vars JSON: $vars"
-                vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'  # Fallback to static
+                vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'
               fi
             else
               echo "Error: bronze-var.yml not found or not readable"
-              vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'  # Fallback
+              vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'
             fi
             database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
             schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
             echo "Extracted database_name: $database_name"
             echo "Extracted schema_name: $schema_name"
-            database_name="${SF_DATABASE:-$database_name}"
+            # Override with secrets if provided
+            database_name="${SF_DATABASE_DEV:-$database_name}"
             schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
             echo "Final database_name: $database_name"
             echo "Final schema_name: $schema_name"
-            echo "Running schemachange with vars: $vars"
-            schemachange -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" -a "$SF_ACCOUNT" -u "$SF_USERNAME" -r "$SF_ROLE" -w "$SF_WAREHOUSE" -d "$database_name" -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" --create-change-history-table --config-folder "$GITHUB_WORKSPACE/bronze/migrations/config" --vars "$vars"
+            # Run schemachange with the parsed vars
+            schemachange \
+              -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" \
+              -a "$SF_ACCOUNT" \
+              -u "$SF_USERNAME" \
+              -r "$SF_ROLE" \
+              -w "$SF_WAREHOUSE" \
+              -d "$database_name" \
+              -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+              --create-change-history-table \
+              --config-folder "$GITHUB_WORKSPACE/bronze/migrations/config" \
+              --vars "$vars"
           else
             echo "Skipping bronze: No migrations folder"
           fi
