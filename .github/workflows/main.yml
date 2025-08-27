@@ -21,6 +21,10 @@ jobs:
         with:
           python-version: 3.8.x
 
+      - name: Install PyYAML
+        run: |
+          pip install pyyaml
+
       - name: Run schemachange for each layer
         env:
           SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
@@ -41,10 +45,17 @@ jobs:
           for layer in $layers; do
             if [ -d "$GITHUB_WORKSPACE/$layer/migrations" ]; then
               echo "Deploying layer: $layer"
-              # Parse layer-var.yml with Python to set env vars
+              # Parse layer-var.yml with Python heredoc
               if [ -f "$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml" ]; then
                 echo "Loading variables from $layer-var.yml"
-                python -c "import yaml, os; data = yaml.safe_load(open('$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml')); for k, v in data.get('variables', {}).items(): os.environ[k] = str(v)"
+                python << 'EOF'
+import yaml
+import os
+with open('$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml') as f:
+    data = yaml.safe_load(f)
+    for k, v in data.get('variables', {}).items():
+        os.environ[k] = str(v)
+EOF
               fi
               
               # Dynamic schema and database (fallback to var.yml if secrets not set)
