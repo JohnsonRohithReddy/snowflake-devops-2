@@ -1,0 +1,95 @@
+name: snowflake-devops-demo
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'bronze/migrations/**'
+      - 'silver/migrations/**'
+      - 'gold/migrations/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-bronze-changes:
+    runs-on: ubuntu-latest
+    steps:
+      # same as before, but pointing to bronze files
+      - name: Deploy bronze changes
+        run: |
+          vars=$(python parse_vars.py bronze/migrations/bronze-var.yml || echo '{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}')
+          database_name=$(echo "$vars" | jq -r '.database_name')
+          schema_name=$(echo "$vars" | jq -r '.schema_name')
+          schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
+
+          schemachange \
+            -f bronze/migrations/scripts \
+            -a "$SF_ACCOUNT" \
+            -u "$SF_USERNAME" \
+            -r "$SF_ROLE" \
+            -w "$SF_WAREHOUSE" \
+            -d "$database_name" \
+            -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+            --create-change-history-table \
+            --config-folder bronze/migrations/config \
+            --vars "$vars"
+
+  deploy-silver-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2.2.1
+        with:
+          python-version: 3.8.x
+      - name: Install dependencies
+        run: pip install pyyaml schemachange
+      - name: Deploy silver changes
+        run: |
+          vars=$(python parse_vars.py silver/migrations/silver-var.yml || echo '{"database_name": "sf_devops_dev_db", "schema_name": "silver"}')
+          database_name=$(echo "$vars" | jq -r '.database_name')
+          schema_name=$(echo "$vars" | jq -r '.schema_name')
+          schema_name="${SF_SCHEMA_SILVER:-$schema_name}"
+
+          schemachange \
+            -f silver/migrations/scripts \
+            -a "$SF_ACCOUNT" \
+            -u "$SF_USERNAME" \
+            -r "$SF_ROLE" \
+            -w "$SF_WAREHOUSE" \
+            -d "$database_name" \
+            -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+            --create-change-history-table \
+            --config-folder silver/migrations/config \
+            --vars "$vars"
+
+  deploy-gold-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2.2.1
+        with:
+          python-version: 3.8.x
+      - name: Install dependencies
+        run: pip install pyyaml schemachange
+      - name: Deploy gold changes
+        run: |
+          vars=$(python parse_vars.py gold/migrations/gold-var.yml || echo '{"database_name": "sf_devops_dev_db", "schema_name": "gold"}')
+          database_name=$(echo "$vars" | jq -r '.database_name')
+          schema_name=$(echo "$vars" | jq -r '.schema_name')
+          schema_name="${SF_SCHEMA_GOLD:-$schema_name}"
+
+          schemachange \
+            -f gold/migrations/scripts \
+            -a "$SF_ACCOUNT" \
+            -u "$SF_USERNAME" \
+            -r "$SF_ROLE" \
+            -w "$SF_WAREHOUSE" \
+            -d "$database_name" \
+            -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+            --create-change-history-table \
+            --config-folder gold/migrations/config \
+            --vars "$vars"

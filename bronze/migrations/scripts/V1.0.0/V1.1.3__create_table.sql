@@ -1,6 +1,0 @@
-CREATE SCHEMA IF NOT EXISTS {{ schema_name }};
-CREATE OR REPLACE TABLE {{ database_name }}.{{ schema_name }}.HELLO_WORLD_145
-(
-   FIRST_NAME VARCHAR
-  ,LAST_NAME VARCHAR
-);

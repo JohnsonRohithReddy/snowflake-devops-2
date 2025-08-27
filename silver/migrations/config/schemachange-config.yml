@@ -1,0 +1,8 @@
+config-version: 1.0
+root-folder: scripts
+vars:
+  database_name: {{ env_var('sf_database', 'SF_DEVOPS_DEV_DB') }}
+  schema_name: {{ env_var('sf_schema', 'silver') }}
+  new_variable: {{ env_var('new_var', 'default_value') }}  # New variable
+create-change-history-table: true
+query-tag: 'SCHEMACHANGE_DEPLOY_SILVER'
