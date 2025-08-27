@@ -36,8 +36,13 @@ jobs:
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
           echo "Step 1: Parsing variables from bronze-var.yml"
-          vars=$(python $GITHUB_WORKSPACE/parse_vars.py $GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml)
+          vars=$(python $GITHUB_WORKSPACE/parse_vars.py $GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml 2> debug.log)
           echo "Parsed vars: $vars"
+          if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
+            echo "Error: Invalid or empty vars JSON: $vars"
+            cat debug.log
+            vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'
+          fi
           database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
           schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
           echo "Extracted database_name: $database_name"
