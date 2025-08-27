@@ -10,10 +10,8 @@ def parse_vars(yml_path):
         vars_data = data.get('variables', {})
         if not vars_data:
             print("Warning: 'variables' key not found or empty", file=sys.stderr)
-        return json.dumps({
-            'database_name': vars_data.get('sf_databases', 'default_db'),  # Default if missing
-            'schema_name': vars_data.get('sf_schema', 'default_schema')   # Default if missing
-        })
+            return json.dumps({'database_name': 'default_db', 'schema_name': 'default_schema'})
+        return json.dumps(vars_data)  # Return all key-value pairs under 'variables'
     except Exception as e:
         print(f"Error parsing {yml_path}: {e}", file=sys.stderr)
         return json.dumps({'database_name': 'default_db', 'schema_name': 'default_schema'})
