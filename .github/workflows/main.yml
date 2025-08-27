@@ -42,7 +42,7 @@ jobs:
           echo "Step 2: Deploying bronze"
           if [ -d "$GITHUB_WORKSPACE/bronze/migrations" ]; then
             echo "Loading variables from bronze-var.yml"
-            vars=$(python -c "import yaml, json; with open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml') as f: data = yaml.safe_load(f); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
+            vars=$(python -c "import yaml, json; f = open('/home/runner/work/snowflake-devops-2/snowflake-devops-2/bronze/migrations/bronze-var.yml'); data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
             database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
             schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
             database_name="${SF_DATABASE:-$database_name}"
