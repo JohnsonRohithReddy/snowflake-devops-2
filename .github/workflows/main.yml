@@ -42,14 +42,19 @@ jobs:
           echo "Step 2: Deploying bronze"
           if [ -d "$GITHUB_WORKSPACE/bronze/migrations" ]; then
             echo "Loading variables from bronze-var.yml"
-            # Debug: Check if file exists
-            if [ -f "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ]; then
-              echo "File found, parsing..."
-              vars=$(python -c "import yaml, json; f = open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml'); data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
-              echo "Parsed vars: $vars"
+            # Debug: Check if file exists and is readable
+            if [ -f "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ] && [ -r "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ]; then
+              echo "File found and readable, parsing..."
+              vars=$(python -c "import yaml, json; f = open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml'); try: data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); result = json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}); print(result) except Exception as e: print(f'Error: {e}')" 2>/dev/null)
+              echo "Raw parsed vars: $vars"
+              # Validate JSON
+              if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
+                echo "Error: Invalid or empty vars JSON: $vars"
+                vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'  # Fallback to static
+              fi
             else
-              echo "Error: bronze-var.yml not found"
-              vars='{"database_name": "default_db", "schema_name": "default_schema"}'
+              echo "Error: bronze-var.yml not found or not readable"
+              vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'  # Fallback
             fi
             database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
             schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
@@ -59,6 +64,7 @@ jobs:
             schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
             echo "Final database_name: $database_name"
             echo "Final schema_name: $schema_name"
+            echo "Running schemachange with vars: $vars"
             schemachange -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" -a "$SF_ACCOUNT" -u "$SF_USERNAME" -r "$SF_ROLE" -w "$SF_WAREHOUSE" -d "$database_name" -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" --create-change-history-table --config-folder "$GITHUB_WORKSPACE/bronze/migrations/config" --vars "$vars"
           else
             echo "Skipping bronze: No migrations folder"
