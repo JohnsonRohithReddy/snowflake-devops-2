@@ -1,14 +1,11 @@
 name: snowflake-devops-demo
 
-# Controls when the action will run. 
 on:
   push:
     branches:
       - main
     paths:
-      - '**/migrations/**'
-
-  # Allows you to run this workflow manually from the Actions tab
+      - 'bronze/migrations/**'
   workflow_dispatch:
 
 jobs:
@@ -16,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout repository
         uses: actions/checkout@v2
 
@@ -26,10 +22,9 @@ jobs:
           python-version: 3.8.x
 
       - name: Install PyYAML
-        run: |
-          pip install pyyaml
+        run: pip install pyyaml
 
-      - name: Run schemachange
+      - name: Run schemachange for bronze
         env:
           SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
@@ -44,40 +39,15 @@ jobs:
           echo "Step 1: Installing schemachange"
           pip install schemachange
           
-          echo "Step 2: Discovering and deploying layers"
-          layers=$(ls -d $GITHUB_WORKSPACE/*/ | xargs -n1 basename | grep -v '^\.' || true)
-          for layer in $layers; do
-            if [ -d "$GITHUB_WORKSPACE/$layer/migrations" ]; then
-              echo "Deploying layer: $layer"
-              # Parse layer-var.yml with Python
-              if [ -f "$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml" ]; then
-                echo "Loading variables from $layer-var.yml"
-                vars=$(python -c "import yaml, json; with open('$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml') as f: data = yaml.safe_load(f); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
-              else
-                vars='{"database_name": "default_db", "schema_name": "default_schema"}'
-              fi
-              
-              # Extract vars for use
-              database_name=$(echo $vars | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
-              schema_name=$(echo $vars | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
-              
-              # Override with secrets if set
-              database_name="${SF_DATABASE:-$database_name}"
-              schema_var="SF_SCHEMA_$(echo $layer | tr 'a-z' 'A-Z')"
-              schema_name="${!schema_var:-$schema_name}"
-              
-              schemachange \
-                -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
-                -a "$SF_ACCOUNT" \
-                -u "$SF_USERNAME" \
-                -r "$SF_ROLE" \
-                -w "$SF_WAREHOUSE" \
-                -d "$database_name" \
-                -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
-                --create-change-history-table \
-                --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars"
-            else
-              echo "Skipping $layer: No migrations folder"
-            fi
-          done
+          echo "Step 2: Deploying bronze"
+          if [ -d "$GITHUB_WORKSPACE/bronze/migrations" ]; then
+            echo "Loading variables from bronze-var.yml"
+            vars=$(python -c "import yaml, json; with open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml') as f: data = yaml.safe_load(f); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
+            database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
+            schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
+            database_name="${SF_DATABASE:-$database_name}"
+            schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
+            schemachange -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" -a "$SF_ACCOUNT" -u "$SF_USERNAME" -r "$SF_ROLE" -w "$SF_WAREHOUSE" -d "$database_name" -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" --create-change-history-table --config-folder "$GITHUB_WORKSPACE/bronze/migrations/config" --vars "$vars"
+          else
+            echo "Skipping bronze: No migrations folder"
+          fi
