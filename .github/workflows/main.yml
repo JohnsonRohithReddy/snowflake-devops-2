@@ -30,7 +30,7 @@ jobs:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
           SF_ROLE: ${{ secrets.SF_ROLE }}
           SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
-          SF_SCHEMA_BRONZE: ${{ secrets.SF_SCHEMA_BRONZE }}  # Keep schema override
+          SF_SCHEMA_BRONZE: ${{ secrets.SF_SCHEMA_BRONZE }}  # Optional override
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
@@ -40,17 +40,18 @@ jobs:
           if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
             echo "Error: Invalid or empty vars JSON: $vars"
             cat debug.log
-            vars='{"database_name": "sf_devops_dev_db", "schema_name": "bronze"}'
+            vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "bronze", "new_var": "test_value"}'
           fi
-          database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
-          schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
+          database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
+          schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
           echo "Extracted database_name: $database_name"
           echo "Extracted schema_name: $schema_name"
-          # Override with secret if set (only schema for now)
+          # Override with secret if set
           schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
           echo "Final database_name: $database_name"
           echo "Final schema_name: $schema_name"
           echo "Step 2: Running schemachange with vars: $vars"
+          ls -la "$GITHUB_WORKSPACE/bronze/migrations/scripts"  # Debug: List scripts
           schemachange \
             -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" \
             -a "$SF_ACCOUNT" \
