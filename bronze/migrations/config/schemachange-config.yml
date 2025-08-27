@@ -1,4 +1,4 @@
 connection_name: "default"                   # matches [default] in connections.toml
 change_history_table: "SCHEMACHANGE.CHANGE_HISTORY"
 create_change_history_table: true
-root_folder: "scripts"                       # relative to config folder
+root_folder: "../scripts"                   # relative to config folder
