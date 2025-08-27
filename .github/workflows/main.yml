@@ -41,14 +41,13 @@ jobs:
           for layer in $layers; do
             if [ -d "$GITHUB_WORKSPACE/$layer/migrations" ]; then
               echo "Deploying layer: $layer"
-              # Load layer-var.yml as env vars
+              # Parse layer-var.yml with Python to set env vars
               if [ -f "$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml" ]; then
                 echo "Loading variables from $layer-var.yml"
-                # Export vars from yml (simple parsing; assumes 'variables:' key)
-                export $(grep -v '^#' $GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml | grep -v '^$' | grep 'variables:' -A 2 | grep -E '^[a-z_]+:' | sed 's/: /=/g' | sed 's/^/export /')
+                python -c "import yaml, os; data = yaml.safe_load(open('$GITHUB_WORKSPACE/$layer/migrations/$layer-var.yml')); for k, v in data.get('variables', {}).items(): os.environ[k] = str(v)"
               fi
               
-              # Dynamic schema (fallback to var.yml if secret not set)
+              # Dynamic schema and database (fallback to var.yml if secrets not set)
               schema_var="SF_SCHEMA_$(echo $layer | tr 'a-z' 'A-Z')"
               schema_name="${!schema_var:-$sf_schema}"  # Use secret or var.yml value
               database_name="${SF_DATABASE:-$sf_database}"  # Use secret or var.yml value
