@@ -1,10 +1,14 @@
-CREATE OR REPLACE TABLE {{ database_name }}.{{ schema_name }}.orders_transformed_table_silver AS
-SELECT
-    order_id,
-    customer_id,
-    order_date,
-    product_id,
-    quantity,
-    price,
-    quantity * price AS total_amount
-FROM {{ database_name }}.BRONZE.{{ var('bronze_table') }};
+CREATE SCHEMA IF NOT EXISTS {{ sf_schema }};
+CREATE OR REPLACE TABLE {{ sf_database }}.{{ sf_schema }}.CLEANED_SALES
+AS
+WITH CleanedData AS (
+    SELECT 
+        SALE_ID,
+        PRODUCT_ID,
+        COALESCE(SALE_DATE, '1900-01-01') AS SALE_DATE,
+        COALESCE(QUANTITY, 0) AS QUANTITY,
+        COALESCE(UNIT_PRICE, 0.0) AS UNIT_PRICE,
+        STORE_ID,
+        ROW_NUMBER() OVER (PARTITION BY SALE_ID ORDER BY _INSERTED_TIMESTAMP DESC) AS rn
+    FROM {{ sf_database }}.bronze.RAW_SALES
+)

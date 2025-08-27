@@ -1,7 +1,13 @@
-CREATE OR REPLACE TABLE {{ database_name }}.{{ schema_name }}.orders_gold_table AS
-SELECT
-    customer_id,
-    SUM(total_amount) AS total_spent,
-    COUNT(DISTINCT order_id) AS orders_count
-FROM {{ database_name }}.SILVER.{{ var('silver_table') }}
-GROUP BY customer_id;
+CREATE SCHEMA IF NOT EXISTS {{ sf_schema }};
+CREATE OR REPLACE TABLE {{ sf_database }}.{{ sf_schema }}.SALES_BY_CATEGORY
+AS
+SELECT 
+    p.CATEGORY,
+    SUM(s.QUANTITY * s.UNIT_PRICE) AS TOTAL_REVENUE,
+    COUNT(DISTINCT s.SALE_ID) AS TOTAL_TRANSACTIONS,
+    AVG(s.QUANTITY) AS AVG_QUANTITY,
+    CURRENT_DATE AS REPORT_DATE
+FROM {{ sf_database }}.silver.CLEANED_SALES s
+LEFT JOIN {{ sf_database }}.bronze.RAW_SALES p
+    ON s.PRODUCT_ID = p.PRODUCT_ID
+GROUP BY p.CATEGORY;
