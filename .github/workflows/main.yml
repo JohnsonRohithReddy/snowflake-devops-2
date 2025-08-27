@@ -30,8 +30,7 @@ jobs:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
           SF_ROLE: ${{ secrets.SF_ROLE }}
           SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
-          SF_DATABASE_DEV: ${{ secrets.SF_DATABASE_DEV }}  # Optional override
-          SF_SCHEMA_BRONZE: ${{ secrets.SF_SCHEMA_BRONZE }}  # Optional override
+          SF_SCHEMA_BRONZE: ${{ secrets.SF_SCHEMA_BRONZE }}  # Keep schema override
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
@@ -47,8 +46,7 @@ jobs:
           schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
           echo "Extracted database_name: $database_name"
           echo "Extracted schema_name: $schema_name"
-          # Override with secrets if set
-          database_name="${SF_DATABASE_DEV:-$database_name}"
+          # Override with secret if set (only schema for now)
           schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
           echo "Final database_name: $database_name"
           echo "Final schema_name: $schema_name"
