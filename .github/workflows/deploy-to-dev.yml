@@ -1,36 +1,58 @@
 name: snowflake-devops-demo
 
-# Controls when the action will run. 
 on:
   push:
     branches:
-      - main
+      - main                 # deploy only from main (prod)
     paths:
-      - 'bronze/migrations/scripts/**'   # updated path
-
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+      - 'bronze/migrations/scripts/**'
+      - 'bronze/migrations/config/**'
+  workflow_dispatch:          # manual trigger
 
 jobs:
   deploy-snowflake-changes-job:
     runs-on: ubuntu-latest
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v2
 
+      # 2️⃣ Set up Python 3.8
       - name: Use Python 3.8.x
-        uses: actions/setup-python@v2.2.1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.8.x
+          python-version: 3.8
 
+      # 3️⃣ Dynamically generate connections.toml
+      - name: Generate connections.toml
+        env:
+          SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_ROLE: ${{ secrets.SF_ROLE }}
+          SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+          SF_DATABASE: ${{ secrets.SF_DATABASE }}
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/bronze/migrations/config
+          cat <<EOF > $GITHUB_WORKSPACE/bronze/migrations/config/connections.toml
+          [default]
+          account = "${SF_ACCOUNT}"
+          user = "${SF_USERNAME}"
+          password = "${SF_PASSWORD}"
+          role = "${SF_ROLE}"
+          warehouse = "${SF_WAREHOUSE}"
+          database = "${SF_DATABASE}"
+          schema = "PUBLIC"
+          EOF
+
+      # 4️⃣ Install schemachange
+      - name: Install schemachange
+        run: |
+          python -m pip install --upgrade pip
+          pip install schemachange
+
+      # 5️⃣ Run schemachange deploy
       - name: Run schemachange
         run: |
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          python --version
-          echo "Step 1: Installing schemachange"
-          pip install schemachange
-          
-          echo "Step 2: Running schemachange"
           schemachange deploy --config-folder $GITHUB_WORKSPACE/bronze/migrations/config
