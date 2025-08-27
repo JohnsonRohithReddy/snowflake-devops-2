@@ -1,9 +1,9 @@
-change_history_table: ${SF_CHANGE_HISTORY_TABLE:SCHEMACHANGE.CHANGE_HISTORY}
-snowflake_account: ${SNOWFLAKE_ACCOUNT}
-snowflake_user: ${SNOWFLAKE_USER}
-snowflake_role: ${SNOWFLAKE_ROLE}
-snowflake_warehouse: ${SNOWFLAKE_WAREHOUSE}
-snowflake_database: ${SNOWFLAKE_DATABASE}
-snowflake_schema: BRONZE
-snowflake_password: ${SNOWFLAKE_PASSWORD}
-vars: var.yaml
+snowflake_account: ${{ secrets.SF_ACCOUNT }}
+snowflake_user: ${{ secrets.SF_USERNAME }}
+snowflake_password: ${{ secrets.SF_PASSWORD }}
+snowflake_role: ${{ secrets.SF_ROLE }}
+snowflake_warehouse: ${{ secrets.SF_WAREHOUSE }}
+snowflake_database: ${{ secrets.SF_DATABASE_DEV }}
+change_history_table: "SCHEMACHANGE.CHANGE_HISTORY"
+create_change_history_table: true
+root_folder: "scripts"   # relative to config file
