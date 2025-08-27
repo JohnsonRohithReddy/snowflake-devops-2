@@ -1,9 +1,4 @@
-snowflake_account: ${{ secrets.SF_ACCOUNT }}
-snowflake_user: ${{ secrets.SF_USERNAME }}
-snowflake_password: ${{ secrets.SF_PASSWORD }}
-snowflake_role: ${{ secrets.SF_ROLE }}
-snowflake_warehouse: ${{ secrets.SF_WAREHOUSE }}
-snowflake_database: ${{ secrets.SF_DATABASE_DEV }}
+connection_name: "default"                   # matches [default] in connections.toml
 change_history_table: "SCHEMACHANGE.CHANGE_HISTORY"
 create_change_history_table: true
-root_folder: "scripts"   # relative to config file
+root_folder: "scripts"                       # relative to config folder
