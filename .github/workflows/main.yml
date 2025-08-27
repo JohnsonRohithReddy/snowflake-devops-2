@@ -42,7 +42,15 @@ jobs:
             echo "Loading variables from bronze-var.yml"
             if [ -f "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ] && [ -r "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ]; then
               echo "File found and readable, parsing..."
-              vars=$(python -c "import yaml, json; f = open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml'); try: data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')})) except Exception as e: print(f'Error: {e}')")
+              vars=$(python << 'EOF'
+import yaml
+import json
+with open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml') as f:
+    data = yaml.safe_load(f)
+    vars_data = data.get('variables', {})
+    print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))
+EOF
+              )
               echo "Parsed vars: $vars"
               if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
                 echo "Error: Invalid or empty vars JSON: $vars"
