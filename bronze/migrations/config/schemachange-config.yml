@@ -1,4 +1,0 @@
-change_history_table: "SCHEMACHANGE.CHANGE_HISTORY"
-create_change_history_table: true
-root_folder: "../scripts"
-vars: "../var.yml"
