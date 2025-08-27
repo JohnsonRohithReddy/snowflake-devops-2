@@ -42,11 +42,23 @@ jobs:
           echo "Step 2: Deploying bronze"
           if [ -d "$GITHUB_WORKSPACE/bronze/migrations" ]; then
             echo "Loading variables from bronze-var.yml"
-            vars=$(python -c "import yaml, json; f = open('/home/runner/work/snowflake-devops-2/snowflake-devops-2/bronze/migrations/bronze-var.yml'); data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
+            # Debug: Check if file exists
+            if [ -f "$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml" ]; then
+              echo "File found, parsing..."
+              vars=$(python -c "import yaml, json; f = open('$GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml'); data = yaml.safe_load(f); f.close(); vars_data = data.get('variables', {}); print(json.dumps({'database_name': vars_data.get('sf_database'), 'schema_name': vars_data.get('sf_schema')}))")
+              echo "Parsed vars: $vars"
+            else
+              echo "Error: bronze-var.yml not found"
+              vars='{"database_name": "default_db", "schema_name": "default_schema"}'
+            fi
             database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['database_name'])")
             schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['schema_name'])")
+            echo "Extracted database_name: $database_name"
+            echo "Extracted schema_name: $schema_name"
             database_name="${SF_DATABASE:-$database_name}"
             schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
+            echo "Final database_name: $database_name"
+            echo "Final schema_name: $schema_name"
             schemachange -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" -a "$SF_ACCOUNT" -u "$SF_USERNAME" -r "$SF_ROLE" -w "$SF_WAREHOUSE" -d "$database_name" -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" --create-change-history-table --config-folder "$GITHUB_WORKSPACE/bronze/migrations/config" --vars "$vars"
           else
             echo "Skipping bronze: No migrations folder"
