@@ -1,36 +1,37 @@
-name: snowflake-devops-demo
+name: Deploy to Dev
 
-# Controls when the action will run. 
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
-      - 'bronze/migrations/scripts/**'   # updated path
-
-  # Allows you to run this workflow manually from the Actions tab
+      - '**/migrations/**'
   workflow_dispatch:
 
 jobs:
-  deploy-snowflake-changes-job:
+  deploy-schemas:
     runs-on: ubuntu-latest
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Use Python 3.8.x
-        uses: actions/setup-python@v2.2.1
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: 3.8.x
+          python-version: '3.10'
 
-      - name: Run schemachange
-        run: |
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          python --version
-          echo "Step 1: Installing schemachange"
-          pip install schemachange
-          
-          echo "Step 2: Running schemachange"
-          schemachange deploy --config-folder $GITHUB_WORKSPACE/bronze/migrations/config
+      - name: Install schemachange
+        run: pip install schemachange
+
+      - name: Deploy Bronze Schema
+        run: schemachange deploy --config-folder bronze/migrations/config
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SF_USERNAME }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SF_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SF_DATABASE }}
+
+      
