@@ -4,6 +4,6 @@ snowflake_user: ${SNOWFLAKE_USER}
 snowflake_role: ${SNOWFLAKE_ROLE}
 snowflake_warehouse: ${SNOWFLAKE_WAREHOUSE}
 snowflake_database: ${SNOWFLAKE_DATABASE}
-snowflake_schema: BRONZE
+snowflake_schema: SILVER
 snowflake_password: ${SNOWFLAKE_PASSWORD}
 vars: var.yaml
