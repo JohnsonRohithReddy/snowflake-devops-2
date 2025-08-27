@@ -3,7 +3,7 @@ name: snowflake-devops-demo
 on:
   push:
     branches:
-      - main                 # deploy only from main (prod)
+      - dev                 # deploy only from main (prod)
     paths:
       - 'bronze/migrations/scripts/**'
       - 'bronze/migrations/config/**'
