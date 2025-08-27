@@ -1,3 +1,4 @@
 variables:
-  sf_databases: SF_DEVOPS_DEV_DB
+  sf_database: SF_DEVOPS_DEV_DB
   sf_schema: bronze
+  new_var: test_value
