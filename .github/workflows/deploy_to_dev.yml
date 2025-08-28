@@ -118,8 +118,8 @@ jobs:
       - name: Commit and push execution log
         run: |
           if [ -f "$GITHUB_WORKSPACE/execution_log.yml" ]; then
-            git config --global user.name "GitHub Action"
-            git config --global user.email "action@github.com"
+            git config --global user.name "JohnsonRohithReddy"  # Use your username
+            git config --global user.email "johnson.gali@anblicks.com"  # Use your email
             # Add a timestamp to force a change if no scripts applied
             timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
             if ! grep -q "$timestamp" "$GITHUB_WORKSPACE/execution_log.yml"; then
@@ -127,15 +127,15 @@ jobs:
             fi
             git add "$GITHUB_WORKSPACE/execution_log.yml"
             git commit -m "Update execution_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
-            # Debug push with PAT and capture output
+            # Debug push with PAT and your username
             echo "Attempting push with PAT to branch dev"
-            set -x  # Enable debug output for the push command
-            git push https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git HEAD:dev || {
+            set -x
+            git push https://JohnsonRohithReddy:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/JohnsonRohithReddy/snowflake-devops-2.git HEAD:dev || {
               echo "Push failed. Detailed error:"
-              git push https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git HEAD:dev 2>&1
-              echo "Check PAT in Secrets (ensure 'repo' scope) or repo write permissions."
+              git push https://JohnsonRohithReddy:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/JohnsonRohithReddy/snowflake-devops-2.git HEAD:dev 2>&1
+              echo "Check PAT in Secrets (ensure 'repo' scope) or repo write permissions for JohnsonRohithReddy."
             }
-            set +x  # Disable debug output
+            set +x
             echo "Pushed execution_log.yml to repo (or attempted, check logs)"
           else
             echo "execution_log.yml not found, nothing to commit"
