@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - dev
+      - test
+      - main
     paths:
       - '**/migrations/**'
   workflow_dispatch:
