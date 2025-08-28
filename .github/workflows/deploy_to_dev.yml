@@ -35,17 +35,17 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # Get layers from Python script
+          # Get layers from Python script and filter valid schemas
           echo "Checking for schemas.yml in $GITHUB_WORKSPACE/config/schemas.yml"
-          ordered_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
+          raw_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
           if [ $? -ne 0 ]; then
             echo "Error: Failed to extract schemas, exiting"
             exit 1
           fi
-          # Split the newline-separated output into an array
-          mapfile -t layers < <(echo "$ordered_layers")
+          # Filter out debug lines and split into array
+          mapfile -t layers < <(echo "$raw_layers" | grep -E '^[a-zA-Z0-9_-]+$' || true)
           if [ ${#layers[@]} -eq 0 ]; then
-            echo "Error: No schemas extracted, exiting"
+            echo "Error: No valid schemas extracted, exiting"
             exit 1
           fi
           echo "Schemas extracted from schemas.yml: ${layers[@]}"
@@ -98,11 +98,16 @@ jobs:
               fi
               # Create new entry
               new_entry="  - version: \"$new_version\"\n    layer: \"$layer\"\n    location: \"$GITHUB_WORKSPACE/$layer/migrations/scripts\"\n    commit_msg: \"$commit_msg\"\n    timestamp: \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\n    applied: $(echo "$schemachange_output" | grep -q "scripts_applied=[1-9]" && echo "true" || echo "false")"
-              # Prepend to log file
+              # Prepend to log file safely
               if [ -f "$log_file" ]; then
-                sed -i "1s/^/executions:\n$new_entry\n/" "$log_file"
+                tmp_file=$(mktemp)
+                echo "executions:" > "$tmp_file"
+                echo "$new_entry" >> "$tmp_file"
+                tail -n +2 "$log_file" >> "$tmp_file"
+                mv "$tmp_file" "$log_file"
               else
-                echo "executions:\n$new_entry" > "$log_file"
+                echo "executions:" > "$log_file"
+                echo "$new_entry" >> "$log_file"
               fi
               echo "Updated execution log with version $new_version for $layer (applied: $(echo "$schemachange_output" | grep -q "scripts_applied=[1-9]" && echo "true" || echo "false"))"
             else
@@ -122,10 +127,11 @@ jobs:
             fi
             git add "$GITHUB_WORKSPACE/execution_log.yml"
             git commit -m "Update execution_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
-            git push origin HEAD:${{ github.ref_name }}
-            echo "Pushed execution_log.yml to repo"
+            # Attempt push with fallback
+            git push origin HEAD:${{ github.ref_name }} 2>/dev/null || echo "Push failed, likely due to missing token. Check your repo settings or add a PAT as a secret."
+            echo "Pushed execution_log.yml to repo (or attempted, check logs)"
           else
             echo "execution_log.yml not found, nothing to commit"
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || '' }}  # Fallback to empty if not set
