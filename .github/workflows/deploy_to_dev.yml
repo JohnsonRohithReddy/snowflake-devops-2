@@ -60,7 +60,7 @@ jobs:
               echo "Extracted database_name: $database_name"
               echo "Extracted schema_name: $schema_name"
               echo "Step 2: Running schemachange for $layer with vars: $vars"
-              ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts and subfolders
+              ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts
               schemachange \
                 -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
                 -a "$SF_ACCOUNT" \
@@ -71,8 +71,7 @@ jobs:
                 -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars" \
-                --recursive  # Enable recursive scanning of subfolders
+                --vars "$vars"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
