@@ -24,7 +24,14 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange  # Install latest (4.0.1)
+        run: pip install pyyaml schemachange
+
+      - name: Prepare scripts for schemachange
+        run: |
+          for layer in "${layers[@]}"; do
+            mkdir -p "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
+            find "$GITHUB_WORKSPACE/$layer/migrations/scripts" -type f -name "V*__*.sql" -exec cp {} "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp/" \;
+          done
 
       - name: Deploy layer changes
         env:
@@ -43,36 +50,47 @@ jobs:
           fi
           # Log the detected layers
           echo "Detected layers: ${layers[@]}"
-          for layer in "${layers[@]}"; do
-            echo "Step 1: Processing $layer layer"
-            var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
-            if [ -f "$var_file" ] && [ -r "$var_file" ]; then
-              echo "Parsing variables from $var_file"
-              vars=$(python $GITHUB_WORKSPACE/parse_vars.py "$var_file" 2> debug_$layer.log)
-              echo "Parsed vars: $vars"
-              if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
-                echo "Error: Invalid or empty vars JSON: $vars"
-                cat debug_$layer.log
-                vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
+          # Define the desired execution order
+          ordered_layers=("bronze" "silver" "gold")
+          for layer in "${ordered_layers[@]}"; do
+            if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
+              echo "Step 1: Processing $layer layer"
+              var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
+              if [ -f "$var_file" ] && [ -r "$var_file" ]; then
+                echo "Parsing variables from $var_file"
+                vars=$(python $GITHUB_WORKSPACE/parse_vars.py "$var_file" 2> debug_$layer.log)
+                echo "Parsed vars: $vars"
+                if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
+                  echo "Error: Invalid or empty vars JSON: $vars"
+                  cat debug_$layer.log
+                  vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
+                fi
+                database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
+                schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
+                echo "Extracted database_name: $database_name"
+                echo "Extracted schema_name: $schema_name"
+                echo "Step 2: Running schemachange for $layer with vars: $vars"
+                ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"  # Debug: List temp scripts
+                schemachange \
+                  -f "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp" \
+                  -a "$SF_ACCOUNT" \
+                  -u "$SF_USERNAME" \
+                  -r "$SF_ROLE" \
+                  -w "$SF_WAREHOUSE" \
+                  -d "$database_name" \
+                  -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+                  --create-change-history-table \
+                  --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
+                  --vars "$vars"
+              else
+                echo "Error: $var_file not found or not readable, skipping $layer"
               fi
-              database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
-              schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
-              echo "Extracted database_name: $database_name"
-              echo "Extracted schema_name: $schema_name"
-              echo "Step 2: Running schemachange for $layer with vars: $vars"
-              ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts and subfolders
-              schemachange \
-                -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
-                -a "$SF_ACCOUNT" \
-                -u "$SF_USERNAME" \
-                -r "$SF_ROLE" \
-                -w "$SF_WAREHOUSE" \
-                -d "$database_name" \
-                -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
-                --create-change-history-table \
-                --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars"
-            else
-              echo "Error: $var_file not found or not readable, skipping $layer"
             fi
+          done
+
+      - name: Cleanup temporary files
+        if: always()
+        run: |
+          for layer in "${layers[@]}"; do
+            rm -rf "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
           done
