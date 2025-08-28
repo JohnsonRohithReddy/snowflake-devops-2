@@ -24,7 +24,7 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange
+        run: pip install pyyaml schemachange  # Install latest (4.0.1)
 
       - name: Deploy layer changes
         env:
@@ -35,8 +35,14 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # List of layers to process
-          layers=("bronze" "silver" "gold")
+          # Dynamically detect layers with migrations folders
+          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+          if [ ${#layers[@]} -eq 0 ]; then
+            echo "Error: No migration folders found, skipping deployment"
+            exit 0
+          fi
+          # Log the detected layers
+          echo "Detected layers: ${layers[@]}"
           for layer in "${layers[@]}"; do
             echo "Step 1: Processing $layer layer"
             var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
@@ -54,7 +60,7 @@ jobs:
               echo "Extracted database_name: $database_name"
               echo "Extracted schema_name: $schema_name"
               echo "Step 2: Running schemachange for $layer with vars: $vars"
-              ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts
+              ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts and subfolders
               schemachange \
                 -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
                 -a "$SF_ACCOUNT" \
