@@ -127,8 +127,15 @@ jobs:
             fi
             git add "$GITHUB_WORKSPACE/execution_log.yml"
             git commit -m "Update execution_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
-            # Use PERSONAL_ACCESS_TOKEN for push
-            git push https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git HEAD:dev 2>/dev/null || echo "Push failed, check your PAT or repo permissions."
+            # Debug push with PAT and capture output
+            echo "Attempting push with PAT to branch dev"
+            set -x  # Enable debug output for the push command
+            git push https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git HEAD:dev || {
+              echo "Push failed. Detailed error:"
+              git push https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git HEAD:dev 2>&1
+              echo "Check PAT in Secrets (ensure 'repo' scope) or repo write permissions."
+            }
+            set +x  # Disable debug output
             echo "Pushed execution_log.yml to repo (or attempted, check logs)"
           else
             echo "execution_log.yml not found, nothing to commit"
