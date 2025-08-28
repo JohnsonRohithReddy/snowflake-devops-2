@@ -1,9 +1,12 @@
 import yaml
 import sys
+import os
 
 def get_schemas():
-    schemas_yml = "schemas.yml"  # Now relative to the config folder
-    print(f"Looking for: {schemas_yml}")  # Debug line
+    schemas_yml = "schemas.yml"  # Relative to the config folder
+    full_path = os.path.join(os.getcwd(), schemas_yml)
+    print(f"Current directory: {os.getcwd()}")  # Debug current dir
+    print(f"Looking for: {full_path}")  # Debug full path
     try:
         with open(schemas_yml, 'r') as file:
             data = yaml.safe_load(file)
