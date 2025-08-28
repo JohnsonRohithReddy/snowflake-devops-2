@@ -87,31 +87,45 @@ jobs:
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
                 --vars "$vars" 2>&1)
               echo "schemachange output: $schemachange_output"  # Debug output
-              # Check if scripts were applied
-              if echo "$schemachange_output" | grep -q "scripts_applied=[1-9]"; then
-                # Extract applied scripts and commit message
-                applied_scripts=$(echo "$schemachange_output" | grep -o "Applying change script.*" | sed 's/.*a_script_name=//; s/ script_version=/ /')
-                commit_msg=$(git log -1 --pretty=format:%s)
-                # Generate version (simple increment based on existing log)
-                if [ -f "$log_file" ]; then
-                  current_version=$(yq eval '.executions[0].version' "$log_file" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "0.0.0")
-                  new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
-                else
-                  new_version="0.0.1"
-                fi
-                # Create new entry
-                new_entry="  - version: \"$new_version\"\n    layer: \"$layer\"\n    location: \"$GITHUB_WORKSPACE/$layer/migrations/scripts\"\n    commit_msg: \"$commit_msg\"\n    timestamp: \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\""
-                # Prepend to log file
-                if [ -f "$log_file" ]; then
-                  sed -i "1s/^/executions:\n$new_entry\n/" "$log_file"
-                else
-                  echo "executions:\n$new_entry" > "$log_file"
-                fi
-                echo "Updated execution log with version $new_version for $layer"
+              # Log entry even if no scripts applied, with a flag
+              commit_msg=$(git log -1 --pretty=format:%s || echo "No commit message")
+              # Generate version (simple increment based on existing log)
+              if [ -f "$log_file" ]; then
+                current_version=$(yq eval '.executions[0].version' "$log_file" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "0.0.0")
+                new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
               else
-                echo "No scripts applied for $layer, log not updated"
+                new_version="0.0.1"
               fi
+              # Create new entry
+              new_entry="  - version: \"$new_version\"\n    layer: \"$layer\"\n    location: \"$GITHUB_WORKSPACE/$layer/migrations/scripts\"\n    commit_msg: \"$commit_msg\"\n    timestamp: \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\n    applied: $(echo "$schemachange_output" | grep -q "scripts_applied=[1-9]" && echo "true" || echo "false")"
+              # Prepend to log file
+              if [ -f "$log_file" ]; then
+                sed -i "1s/^/executions:\n$new_entry\n/" "$log_file"
+              else
+                echo "executions:\n$new_entry" > "$log_file"
+              fi
+              echo "Updated execution log with version $new_version for $layer (applied: $(echo "$schemachange_output" | grep -q "scripts_applied=[1-9]" && echo "true" || echo "false"))"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
           done
+
+      - name: Commit and push execution log
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/execution_log.yml" ]; then
+            git config --global user.name "GitHub Action"
+            git config --global user.email "action@github.com"
+            # Add a timestamp to force a change if no scripts applied
+            timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            if ! grep -q "$timestamp" "$GITHUB_WORKSPACE/execution_log.yml"; then
+              echo "# Last run: $timestamp" >> "$GITHUB_WORKSPACE/execution_log.yml"
+            fi
+            git add "$GITHUB_WORKSPACE/execution_log.yml"
+            git commit -m "Update execution_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
+            git push origin HEAD:${{ github.ref_name }}
+            echo "Pushed execution_log.yml to repo"
+          else
+            echo "execution_log.yml not found, nothing to commit"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
