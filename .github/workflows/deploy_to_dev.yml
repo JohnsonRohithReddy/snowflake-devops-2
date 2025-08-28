@@ -22,7 +22,12 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange yq  # yq for parsing schemas.yml
+        run: |
+          pip install pyyaml schemachange
+          # Install mikefarah/yq explicitly
+          wget https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -O /usr/bin/yq
+          chmod +x /usr/bin/yq
+          yq --version
 
       - name: Deploy layer changes
         env:
@@ -38,10 +43,12 @@ jobs:
           if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
             echo "Contents of schemas.yml:"
             cat "$GITHUB_WORKSPACE/schemas.yml"
-            # Read layer order from schemas.yml
-            mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
+            # Read layer order from schemas.yml with debug
+            mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" 2> yq_error.log || true)
             if [ ${#ordered_layers[@]} -eq 0 ]; then
               echo "Error: schemas.yml exists but has no valid schemas, exiting"
+              echo "yq error output:"
+              cat yq_error.log
               exit 1
             fi
             echo "Schemas extracted from schemas.yml: ${ordered_layers[@]}"
