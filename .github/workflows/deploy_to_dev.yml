@@ -61,7 +61,7 @@ jobs:
               if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
                 echo "Error: Invalid or empty vars JSON: $vars"
                 cat debug_$layer.log
-                vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
+                vars='{"sf_database": "SF_DATABASE_TEST", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
               fi
               database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
               schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")

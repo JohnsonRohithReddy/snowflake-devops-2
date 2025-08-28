@@ -11,7 +11,7 @@ def generate_execution_log(layer, vars_json, schemachange_output, workspace):
     # Parse vars
     try:
         vars_dict = json.loads(vars_json)
-        database_name = vars_dict.get("sf_database", "SF_DEVOPS_DEV_DB")
+        database_name = vars_dict.get("sf_database", "SF_DEVOPS_TEST_DB")
         schema_name = vars_dict.get("sf_schema", layer)
     except json.JSONDecodeError:
         vars_dict = {"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": layer, "new_var": f"{layer}_value"}
