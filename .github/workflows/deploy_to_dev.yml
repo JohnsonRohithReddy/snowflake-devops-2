@@ -3,7 +3,7 @@ name: snowflake-devops-demo
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
       - '*/migrations/**'  # Watch all migration folders
   workflow_dispatch:
