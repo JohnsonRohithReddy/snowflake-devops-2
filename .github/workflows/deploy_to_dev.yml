@@ -51,6 +51,11 @@ jobs:
           echo "Schemas extracted from schemas.yml: ${layers[@]}"
           echo "Detected layers: $(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')"
           echo "Processing layers in order: ${layers[@]}"
+          # Initialize or load execution log
+          log_file="$GITHUB_WORKSPACE/execution_log.yml"
+          if [ ! -f "$log_file" ]; then
+            echo "executions: []" > "$log_file"
+          fi
           for layer in "${layers[@]}"; do
             echo "Step 1: Processing $layer layer"
             var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
@@ -69,7 +74,7 @@ jobs:
               echo "Extracted schema_name: $schema_name"
               echo "Step 2: Running schemachange for $layer with vars: $vars"
               ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts
-              schemachange \
+              schemachange_output=$(schemachange \
                 -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
                 -a "$SF_ACCOUNT" \
                 -u "$SF_USERNAME" \
@@ -79,7 +84,30 @@ jobs:
                 -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars"
+                --vars "$vars" 2>&1)
+              echo "$schemachange_output"
+              # Check if scripts were applied
+              if echo "$schemachange_output" | grep -q "scripts_applied=[1-9]"; then
+                # Extract applied scripts and commit message
+                applied_scripts=$(echo "$schemachange_output" | grep -o "Applying change script.*" | sed 's/.*a_script_name=//; s/ script_version=/ /')
+                commit_msg=$(git log -1 --pretty=format:%s)
+                # Generate version (simple increment based on existing log)
+                if [ -f "$log_file" ]; then
+                  current_version=$(yq eval '.executions[0].version' "$log_file" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "0.0.0")
+                  new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
+                else
+                  new_version="0.0.1"
+                fi
+                # Create new entry
+                new_entry="  - version: \"$new_version\"\n    layer: \"$layer\"\n    location: \"$GITHUB_WORKSPACE/$layer/migrations/scripts\"\n    commit_msg: \"$commit_msg\"\n    timestamp: \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\""
+                # Prepend to log file
+                if [ -f "$log_file" ]; then
+                  sed -i "1s/^/executions:\n$new_entry\n/" "$log_file"
+                else
+                  echo "executions:\n$new_entry" > "$log_file"
+                fi
+                echo "Updated execution log with version $new_version for $layer"
+              fi
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
