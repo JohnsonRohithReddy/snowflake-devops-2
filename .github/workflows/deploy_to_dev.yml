@@ -35,17 +35,17 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # Get layers from Python script and filter valid schemas
+          # Get layers from Python script
           echo "Checking for schemas.yml in $GITHUB_WORKSPACE/config/schemas.yml"
-          raw_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
+          ordered_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
           if [ $? -ne 0 ]; then
             echo "Error: Failed to extract schemas, exiting"
             exit 1
           fi
-          # Filter out debug lines and split into array
-          mapfile -t layers < <(echo "$raw_layers" | grep -E '^[a-zA-Z0-9_-]+$' || true)
+          # Split the newline-separated output into an array
+          mapfile -t layers < <(echo "$ordered_layers")
           if [ ${#layers[@]} -eq 0 ]; then
-            echo "Error: No valid schemas extracted, exiting"
+            echo "Error: No schemas extracted, exiting"
             exit 1
           fi
           echo "Schemas extracted from schemas.yml: ${layers[@]}"
@@ -69,7 +69,7 @@ jobs:
               echo "Extracted schema_name: $schema_name"
               echo "Step 2: Running schemachange for $layer with vars: $vars"
               ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts
-              schemachange_output=$(schemachange \
+              schemachange \
                 -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
                 -a "$SF_ACCOUNT" \
                 -u "$SF_USERNAME" \
@@ -79,27 +79,8 @@ jobs:
                 -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars" 2>&1)
-              echo "schemachange output: $schemachange_output"
-              # Generate execution log
-              python $GITHUB_WORKSPACE/config/generate_execution_log.py "$layer" "$vars" "$schemachange_output"
+                --vars "$vars"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
           done
-
-      - name: Output log file location
-        run: |
-          if [ -f "$GITHUB_WORKSPACE/execution_log.yml" ]; then
-            echo "Execution log generated at $GITHUB_WORKSPACE/execution_log.yml"
-            cat "$GITHUB_WORKSPACE/execution_log.yml"
-          else
-            echo "No execution log generated"
-          fi
-
-      - name: Upload execution log as artifact
-        uses: actions/upload-artifact@v4  # Updated to v4
-        if: always()  # Run even if previous steps fail
-        with:
-          name: execution-log
-          path: ${{ github.workspace }}/execution_log.yml
