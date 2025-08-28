@@ -22,7 +22,8 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange yq  # yq for parsing schemas.yml
+        run: |
+          pip install pyyaml schemachange  # No need for yq now
 
       - name: Deploy layer changes
         env:
@@ -33,19 +34,20 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          # Get schemas using Python script
           echo "Checking for schemas.yml at $GITHUB_WORKSPACE/schemas.yml"
-          # Read layer order from schemas.yml
-          if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
-            mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
-            if [ ${#ordered_layers[@]} -eq 0 ]; then
-              echo "Error: schemas.yml exists but has no valid schemas, exiting"
-              exit 1
-            fi
-            echo "Schemas extracted from schemas.yml: ${ordered_layers[@]}"
-          else
-            echo "Error: schemas.yml not found at $GITHUB_WORKSPACE/schemas.yml, exiting"
+          ordered_layers=$(python .github/workflows/get_schemas.py)
+          if [ $? -ne 0 ]; then
+            echo "Error: Failed to extract schemas, exiting"
             exit 1
           fi
+          # Split the space-separated output into an array
+          mapfile -t ordered_layers_array < <(echo "$ordered_layers")
+          if [ ${#ordered_layers_array[@]} -eq 0 ]; then
+            echo "Error: No schemas extracted, exiting"
+            exit 1
+          fi
+          echo "Schemas extracted from schemas.yml: ${ordered_layers_array[@]}"
           # Detect available layers
           mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
           if [ ${#layers[@]} -eq 0 ]; then
@@ -53,17 +55,17 @@ jobs:
             exit 0
           fi
           echo "Detected layers: $(echo "${layers[@]}" | tr ' ' ' ')"
-          echo "Processing layers in order: ${ordered_layers[@]}"
+          echo "Processing layers in order: ${ordered_layers_array[@]}"
           # Initialize or load execution history
           history_file="$GITHUB_WORKSPACE/execution_history.yml"
           if [ -f "$history_file" ]; then
-            latest_version=$(yq e '.latest_version' "$history_file" || echo "0.0.0")
+            latest_version=$(yq eval '.latest_version' "$history_file" || echo "0.0.0")
           else
             latest_version="0.0.0"
             echo "latest_version: $latest_version" > "$history_file"
             echo "executions: []" >> "$history_file"
           fi
-          for layer in "${ordered_layers[@]}"; do
+          for layer in "${ordered_layers_array[@]}"; do
             if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
               echo "Step 1: Processing $layer layer"
               var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
@@ -102,8 +104,8 @@ jobs:
                   # Increment version (simple increment for now)
                   new_version=$(echo "$latest_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
                   # Update history file
-                  yq e ".latest_version = \"$new_version\"" -i "$history_file"
-                  yq e ".executions += [{\"version\": \"$new_version\", \"layer\": \"$layer\", \"scripts\": [\"$applied_scripts\"], \"commit_msg\": \"$commit_msg\", \"timestamp\": \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}]" -i "$history_file"
+                  yq eval ".latest_version = \"$new_version\"" -i "$history_file"
+                  yq eval ".executions += [{\"version\": \"$new_version\", \"layer\": \"$layer\", \"scripts\": [\"$applied_scripts\"], \"commit_msg\": \"$commit_msg\", \"timestamp\": \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}]" -i "$history_file"
                   echo "Updated execution history with version $new_version"
                   latest_version=$new_version
                 fi
