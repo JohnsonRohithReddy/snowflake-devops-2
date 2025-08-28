@@ -4,8 +4,8 @@ import os
 
 def get_schemas():
     schemas_yml = os.path.join(os.path.dirname(__file__), "schemas.yml")
-    print(f"Current directory: {os.getcwd()}")  # Debug current dir
-    print(f"Looking for: {schemas_yml}")  # Debug full path
+    print(f"Current directory: {os.getcwd()}")  # Debug on separate line
+    print(f"Looking for: {schemas_yml}")      # Debug on separate line
     try:
         with open(schemas_yml, 'r') as file:
             data = yaml.safe_load(file)
@@ -23,4 +23,5 @@ def get_schemas():
 
 if __name__ == "__main__":
     schemas = get_schemas()
-    print(" ".join(schemas))  # Output as space-separated list for shell parsing
+    for schema in schemas:
+        print(schema)  # Print each schema on a new line
