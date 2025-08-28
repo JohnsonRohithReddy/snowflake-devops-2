@@ -3,7 +3,7 @@ name: snowflake-devops-demo
 on:
   push:
     branches:
-      - dev
+      - main
     paths:
       - 'bronze/migrations/**'
       - 'silver/migrations/**'
@@ -28,9 +28,22 @@ jobs:
 
       - name: Prepare scripts for schemachange
         run: |
-          for layer in "${layers[@]}"; do
-            mkdir -p "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
-            find "$GITHUB_WORKSPACE/$layer/migrations/scripts" -type f -name "V*__*.sql" -exec cp {} "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp/" \;
+          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+          if [ ${#layers[@]} -eq 0 ]; then
+            echo "Error: No migration folders found, skipping preparation"
+            exit 0
+          fi
+          # Read layer order from file, fallback to detected layers if file missing
+          if [ -f "$GITHUB_WORKSPACE/layer_order.txt" ]; then
+            mapfile -t ordered_layers < "$GITHUB_WORKSPACE/layer_order.txt"
+          else
+            ordered_layers=("${layers[@]}")
+          fi
+          for layer in "${ordered_layers[@]}"; do
+            if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
+              mkdir -p "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
+              find "$GITHUB_WORKSPACE/$layer/migrations/scripts" -type f -name "V*__*.sql" -exec cp {} "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp/" \;
+            fi
           done
 
       - name: Deploy layer changes
@@ -42,16 +55,19 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # Dynamically detect layers with migrations folders
           mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
           if [ ${#layers[@]} -eq 0 ]; then
             echo "Error: No migration folders found, skipping deployment"
             exit 0
           fi
-          # Log the detected layers
+          # Read layer order from file, fallback to detected layers if file missing
+          if [ -f "$GITHUB_WORKSPACE/layer_order.txt" ]; then
+            mapfile -t ordered_layers < "$GITHUB_WORKSPACE/layer_order.txt"
+          else
+            ordered_layers=("${layers[@]}")
+          fi
           echo "Detected layers: ${layers[@]}"
-          # Define the desired execution order
-          ordered_layers=("bronze" "silver" "gold")
+          echo "Processing layers in order: ${ordered_layers[@]}"
           for layer in "${ordered_layers[@]}"; do
             if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
               echo "Step 1: Processing $layer layer"
@@ -91,6 +107,7 @@ jobs:
       - name: Cleanup temporary files
         if: always()
         run: |
+          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
           for layer in "${layers[@]}"; do
             rm -rf "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
           done
