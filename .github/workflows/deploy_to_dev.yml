@@ -134,4 +134,4 @@ jobs:
             echo "execution_log.yml not found, nothing to commit"
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || '' }}  # Fallback to empty if not set
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || '' }}  # Fallback to empty if not set
