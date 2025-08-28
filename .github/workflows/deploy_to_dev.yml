@@ -127,11 +127,9 @@ jobs:
             fi
             git add "$GITHUB_WORKSPACE/execution_log.yml"
             git commit -m "Update execution_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
-            # Attempt push with fallback
-            git push origin HEAD:${{ github.ref_name }} 2>/dev/null || echo "Push failed, likely due to missing token. Check your repo settings or add a PAT as a secret."
+            # Use PERSONAL_ACCESS_TOKEN for push
+            git push https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git HEAD:dev 2>/dev/null || echo "Push failed, check your PAT or repo permissions."
             echo "Pushed execution_log.yml to repo (or attempted, check logs)"
           else
             echo "execution_log.yml not found, nothing to commit"
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || '' }}  # Fallback to empty if not set
