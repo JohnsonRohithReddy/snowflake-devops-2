@@ -1,0 +1,4 @@
+schemas:
+  - bronze
+  - silver
+  - gold
