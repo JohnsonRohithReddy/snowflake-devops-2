@@ -55,6 +55,7 @@ jobs:
           log_file="$GITHUB_WORKSPACE/execution_log.yml"
           if [ ! -f "$log_file" ]; then
             echo "executions: []" > "$log_file"
+            echo "Created execution_log.yml"
           fi
           for layer in "${layers[@]}"; do
             echo "Step 1: Processing $layer layer"
@@ -85,7 +86,7 @@ jobs:
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
                 --vars "$vars" 2>&1)
-              echo "$schemachange_output"
+              echo "schemachange output: $schemachange_output"  # Debug output
               # Check if scripts were applied
               if echo "$schemachange_output" | grep -q "scripts_applied=[1-9]"; then
                 # Extract applied scripts and commit message
@@ -107,6 +108,8 @@ jobs:
                   echo "executions:\n$new_entry" > "$log_file"
                 fi
                 echo "Updated execution log with version $new_version for $layer"
+              else
+                echo "No scripts applied for $layer, log not updated"
               fi
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
