@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - '**/migrations/**'  # Watch all migration folders for any schema
+      - 'bronze/migrations/**'
   workflow_dispatch:
 
 jobs:
-  deploy-layer-changes:
+  deploy-bronze-changes:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,105 +22,44 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange yq  # yq for parsing schemas.yml
+        run: pip install pyyaml schemachange
 
-      - name: Prepare scripts for schemachange
-        run: |
-          # Detect available layers
-          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
-          if [ ${#layers[@]} -eq 0 ]; then
-            echo "Error: No migration folders found, skipping preparation"
-            exit 0
-          fi
-          # Read layer order from schemas.yml
-          if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
-            mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
-            if [ ${#ordered_layers[@]} -eq 0 ]; then
-              echo "Warning: schemas.yml exists but has no valid schemas, using detected layers"
-              ordered_layers=("${layers[@]}")
-            fi
-          else
-            echo "Warning: schemas.yml not found, using detected layers"
-            ordered_layers=("${layers[@]}")
-          fi
-          # Prepare scripts for each layer
-          for layer in "${ordered_layers[@]}"; do
-            if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
-              mkdir -p "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
-              find "$GITHUB_WORKSPACE/$layer/migrations/scripts" -type f -name "V*__*.sql" -exec cp {} "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp/" \;
-            fi
-          done
-
-      - name: Deploy layer changes
+      - name: Deploy bronze changes
         env:
           SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
           SF_ROLE: ${{ secrets.SF_ROLE }}
           SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+          SF_SCHEMA_BRONZE: ${{ secrets.SF_SCHEMA_BRONZE }}  # Optional override
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # Detect available layers
-          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
-          if [ ${#layers[@]} -eq 0 ]; then
-            echo "Error: No migration folders found, skipping deployment"
-            exit 0
+          echo "Step 1: Parsing variables from bronze-var.yml"
+          vars=$(python $GITHUB_WORKSPACE/parse_vars.py $GITHUB_WORKSPACE/bronze/migrations/bronze-var.yml 2> debug.log)
+          echo "Parsed vars: $vars"
+          if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
+            echo "Error: Invalid or empty vars JSON: $vars"
+            cat debug.log
+            vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "bronze", "new_var": "test_value"}'
           fi
-          # Read layer order from schemas.yml
-          if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
-            mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
-            if [ ${#ordered_layers[@]} -eq 0 ]; then
-              echo "Warning: schemas.yml exists but has no valid schemas, using detected layers"
-              ordered_layers=("${layers[@]}")
-            fi
-          else
-            echo "Warning: schemas.yml not found, using detected layers"
-            ordered_layers=("${layers[@]}")
-          fi
-          echo "Detected layers: $(echo "${layers[@]}" | tr ' ' ' ')"
-          echo "Processing layers in order: ${ordered_layers[@]}"
-          for layer in "${ordered_layers[@]}"; do
-            if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
-              echo "Step 1: Processing $layer layer"
-              var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
-              if [ -f "$var_file" ] && [ -r "$var_file" ]; then
-                echo "Parsing variables from $var_file"
-                vars=$(python $GITHUB_WORKSPACE/parse_vars.py "$var_file" 2> debug_$layer.log)
-                echo "Parsed vars: $vars"
-                if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
-                  echo "Error: Invalid or empty vars JSON: $vars"
-                  cat debug_$layer.log
-                  vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
-                fi
-                database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
-                schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
-                echo "Extracted database_name: $database_name"
-                echo "Extracted schema_name: $schema_name"
-                echo "Step 2: Running schemachange for $layer with vars: $vars"
-                ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"  # Debug: List temp scripts
-                schemachange \
-                  -f "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp" \
-                  -a "$SF_ACCOUNT" \
-                  -u "$SF_USERNAME" \
-                  -r "$SF_ROLE" \
-                  -w "$SF_WAREHOUSE" \
-                  -d "$database_name" \
-                  -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
-                  --create-change-history-table \
-                  --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                  --vars "$vars"
-              else
-                echo "Error: $var_file not found or not readable, skipping $layer"
-              fi
-            else
-              echo "Warning: Layer $layer not found, skipping"
-            fi
-          done
-
-      - name: Cleanup temporary files
-        if: always()
-        run: |
-          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
-          for layer in "${layers[@]}"; do
-            rm -rf "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
-          done
+          database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
+          schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
+          echo "Extracted database_name: $database_name"
+          echo "Extracted schema_name: $schema_name"
+          # Override with secret if set
+          schema_name="${SF_SCHEMA_BRONZE:-$schema_name}"
+          echo "Final database_name: $database_name"
+          echo "Final schema_name: $schema_name"
+          echo "Step 2: Running schemachange with vars: $vars"
+          ls -la "$GITHUB_WORKSPACE/bronze/migrations/scripts"  # Debug: List scripts
+          schemachange \
+            -f "$GITHUB_WORKSPACE/bronze/migrations/scripts" \
+            -a "$SF_ACCOUNT" \
+            -u "$SF_USERNAME" \
+            -r "$SF_ROLE" \
+            -w "$SF_WAREHOUSE" \
+            -d "$database_name" \
+            -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+            --create-change-history-table \
+            --config-folder "$GITHUB_WORKSPACE/bronze/migrations/config" \
+            --vars "$vars"
