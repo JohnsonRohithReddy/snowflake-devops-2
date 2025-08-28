@@ -82,7 +82,7 @@ jobs:
                 --vars "$vars" 2>&1)
               echo "schemachange output: $schemachange_output"
               # Generate execution log
-              python $GITHUB_WORKSPACE/generate_execution_log.py "$layer" "$vars" "$schemachange_output"
+              python $GITHUB_WORKSPACE/config/generate_execution_log.py "$layer" "$vars" "$schemachange_output"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
