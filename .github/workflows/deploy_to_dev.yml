@@ -34,9 +34,9 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # Get schemas using Python script
-          echo "Checking for schemas.yml at $GITHUB_WORKSPACE/schemas.yml"
-          ordered_layers=$(python .github/workflows/get_schemas.py)
+          # Get schemas using Python script from config folder
+          echo "Checking for schemas.yml in $GITHUB_WORKSPACE/config/schemas.yml"
+          ordered_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
           if [ $? -ne 0 ]; then
             echo "Error: Failed to extract schemas, exiting"
             exit 1
