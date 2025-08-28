@@ -3,11 +3,9 @@ name: snowflake-devops-demo
 on:
   push:
     branches:
-      - main
+      - dev
     paths:
-      - 'bronze/migrations/**'
-      - 'silver/migrations/**'
-      - 'gold/migrations/**'
+      - '**/migrations/**'
   workflow_dispatch:
 
 jobs:
