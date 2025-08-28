@@ -34,8 +34,11 @@ jobs:
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
           echo "Checking for schemas.yml at $GITHUB_WORKSPACE/schemas.yml"
-          # Read layer order from schemas.yml
+          # Debug: Print schemas.yml content
           if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
+            echo "Contents of schemas.yml:"
+            cat "$GITHUB_WORKSPACE/schemas.yml"
+            # Read layer order from schemas.yml
             mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
             if [ ${#ordered_layers[@]} -eq 0 ]; then
               echo "Error: schemas.yml exists but has no valid schemas, exiting"
