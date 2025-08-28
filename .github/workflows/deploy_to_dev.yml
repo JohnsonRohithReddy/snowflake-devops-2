@@ -98,7 +98,7 @@ jobs:
           fi
 
       - name: Upload execution log as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Updated to v4
         if: always()  # Run even if previous steps fail
         with:
           name: execution-log
