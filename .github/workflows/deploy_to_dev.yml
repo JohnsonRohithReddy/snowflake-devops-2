@@ -18,13 +18,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Use Python 4.8.x
+      - name: Use Python 3.8.x
         uses: actions/setup-python@v2.2.1
         with:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange==4.1.0  # Updated to a version supporting --recursive
+        run: pip install pyyaml schemachange  # Install latest (4.0.1)
 
       - name: Deploy layer changes
         env:
@@ -71,8 +71,7 @@ jobs:
                 -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars" \
-                --recursive  # Re-added for subfolder support
+                --vars "$vars"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
