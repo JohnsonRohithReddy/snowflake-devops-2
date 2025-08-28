@@ -51,12 +51,6 @@ jobs:
           echo "Schemas extracted from schemas.yml: ${layers[@]}"
           echo "Detected layers: $(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')"
           echo "Processing layers in order: ${layers[@]}"
-          # Initialize or load execution log
-          log_file="$GITHUB_WORKSPACE/execution_log.yml"
-          if [ ! -f "$log_file" ]; then
-            echo "executions: []" > "$log_file"
-            echo "Created execution_log.yml"
-          fi
           for layer in "${layers[@]}"; do
             echo "Step 1: Processing $layer layer"
             var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
@@ -86,57 +80,19 @@ jobs:
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
                 --vars "$vars" 2>&1)
-              echo "schemachange output: $schemachange_output"  # Debug output
-              # Log entry even if no scripts applied, with a flag
-              commit_msg=$(git log -1 --pretty=format:%s || echo "No commit message")
-              # Generate version (simple increment based on existing log)
-              if [ -f "$log_file" ]; then
-                current_version=$(yq eval '.executions[0].version' "$log_file" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "0.0.0")
-                new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
-              else
-                new_version="0.0.1"
-              fi
-              # Create new entry
-              new_entry="  - version: \"$new_version\"\n    layer: \"$layer\"\n    location: \"$GITHUB_WORKSPACE/$layer/migrations/scripts\"\n    commit_msg: \"$commit_msg\"\n    timestamp: \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\n    applied: $(echo "$schemachange_output" | grep -q "scripts_applied=[1-9]" && echo "true" || echo "false")"
-              # Prepend to log file safely
-              if [ -f "$log_file" ]; then
-                tmp_file=$(mktemp)
-                echo "executions:" > "$tmp_file"
-                echo "$new_entry" >> "$tmp_file"
-                tail -n +2 "$log_file" >> "$tmp_file"
-                mv "$tmp_file" "$log_file"
-              else
-                echo "executions:" > "$log_file"
-                echo "$new_entry" >> "$log_file"
-              fi
-              echo "Updated execution log with version $new_version for $layer (applied: $(echo "$schemachange_output" | grep -q "scripts_applied=[1-9]" && echo "true" || echo "false"))"
+              echo "schemachange output: $schemachange_output"
+              # Generate execution log
+              python $GITHUB_WORKSPACE/generate_execution_log.py "$layer" "$vars" "$schemachange_output"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
           done
 
-      - name: Commit and push execution log
+      - name: Output log file location
         run: |
           if [ -f "$GITHUB_WORKSPACE/execution_log.yml" ]; then
-            git config --global user.name "JohnsonRohithReddy"  # Use your username
-            git config --global user.email "johnson.gali@anblicks.com"  # Use your email
-            # Add a timestamp to force a change if no scripts applied
-            timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-            if ! grep -q "$timestamp" "$GITHUB_WORKSPACE/execution_log.yml"; then
-              echo "# Last run: $timestamp" >> "$GITHUB_WORKSPACE/execution_log.yml"
-            fi
-            git add "$GITHUB_WORKSPACE/execution_log.yml"
-            git commit -m "Update execution_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
-            # Debug push with PAT and your username
-            echo "Attempting push with PAT to branch dev"
-            set -x
-            git push https://JohnsonRohithReddy:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/JohnsonRohithReddy/snowflake-devops-2.git HEAD:dev || {
-              echo "Push failed. Detailed error:"
-              git push https://JohnsonRohithReddy:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/JohnsonRohithReddy/snowflake-devops-2.git HEAD:dev 2>&1
-              echo "Check PAT in Secrets (ensure 'repo' scope) or repo write permissions for JohnsonRohithReddy."
-            }
-            set +x
-            echo "Pushed execution_log.yml to repo (or attempted, check logs)"
+            echo "Execution log generated at $GITHUB_WORKSPACE/execution_log.yml"
+            cat "$GITHUB_WORKSPACE/execution_log.yml"
           else
-            echo "execution_log.yml not found, nothing to commit"
+            echo "No execution log generated"
           fi
