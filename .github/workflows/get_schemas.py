@@ -3,6 +3,7 @@ import sys
 
 def get_schemas():
     schemas_yml = "../schemas.yml"  # Relative to .github/workflows/
+    print(f"Looking for: {schemas_yml}")  # Debug line
     try:
         with open(schemas_yml, 'r') as file:
             data = yaml.safe_load(file)
