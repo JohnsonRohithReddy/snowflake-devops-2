@@ -96,3 +96,10 @@ jobs:
           else
             echo "No execution log generated"
           fi
+
+      - name: Upload execution log as artifact
+        uses: actions/upload-artifact@v3
+        if: always()  # Run even if previous steps fail
+        with:
+          name: execution-log
+          path: ${{ github.workspace }}/execution_log.yml
