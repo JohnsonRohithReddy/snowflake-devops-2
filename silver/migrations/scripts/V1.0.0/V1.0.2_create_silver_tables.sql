@@ -1,0 +1,14 @@
+CREATE SCHEMA IF NOT EXISTS {{ sf_schema }};
+CREATE OR REPLACE TABLE {{ sf_database }}.{{ sf_schema }}.CLEANED_SALES
+AS
+WITH CleanedData AS (
+    SELECT 
+        SALE_ID,
+        PRODUCT_ID,
+        COALESCE(SALE_DATE, '1900-01-01') AS SALE_DATE,
+        COALESCE(QUANTITY, 0) AS QUANTITY,
+        COALESCE(UNIT_PRICE, 0.0) AS UNIT_PRICE,
+        STORE_ID,
+        ROW_NUMBER() OVER (PARTITION BY SALE_ID ORDER BY _INSERTED_TIMESTAMP DESC) AS rn
+    FROM {{ sf_database }}.bronze.RAW_SALES
+)
