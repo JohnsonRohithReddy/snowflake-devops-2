@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - '*/migrations/**'  # Watch all migration folders
+      - '**/migrations/**'  # Watch all migration folders for any schema
   workflow_dispatch:
 
 jobs:
@@ -22,34 +22,32 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange yq  # Ensure yq is installed
+        run: pip install pyyaml schemachange yq  # yq for parsing schemas.yml
 
       - name: Prepare scripts for schemachange
         run: |
-          echo "Checking for schemas.yml at $GITHUB_WORKSPACE/schemas.yml"
+          # Detect available layers
+          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+          if [ ${#layers[@]} -eq 0 ]; then
+            echo "Error: No migration folders found, skipping preparation"
+            exit 0
+          fi
           # Read layer order from schemas.yml
           if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
             mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
             if [ ${#ordered_layers[@]} -eq 0 ]; then
               echo "Warning: schemas.yml exists but has no valid schemas, using detected layers"
-              mapfile -t ordered_layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+              ordered_layers=("${layers[@]}")
             fi
           else
-            echo "Warning: schemas.yml not found at $GITHUB_WORKSPACE/schemas.yml, using detected layers"
-            mapfile -t ordered_layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+            echo "Warning: schemas.yml not found, using detected layers"
+            ordered_layers=("${layers[@]}")
           fi
-          if [ ${#ordered_layers[@]} -eq 0 ]; then
-            echo "Error: No migration folders found, skipping preparation"
-            exit 0
-          fi
-          echo "Ordered layers from schemas.yml or detection: ${ordered_layers[@]}"
           # Prepare scripts for each layer
           for layer in "${ordered_layers[@]}"; do
-            if [ -d "$GITHUB_WORKSPACE/$layer/migrations/scripts" ]; then
+            if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
               mkdir -p "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp"
               find "$GITHUB_WORKSPACE/$layer/migrations/scripts" -type f -name "V*__*.sql" -exec cp {} "$GITHUB_WORKSPACE/$layer/migrations/scripts_temp/" \;
-            else
-              echo "Warning: No scripts folder found for $layer, skipping preparation"
             fi
           done
 
@@ -62,25 +60,27 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          # Detect available layers
+          mapfile -t layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+          if [ ${#layers[@]} -eq 0 ]; then
+            echo "Error: No migration folders found, skipping deployment"
+            exit 0
+          fi
           # Read layer order from schemas.yml
           if [ -f "$GITHUB_WORKSPACE/schemas.yml" ]; then
             mapfile -t ordered_layers < <(yq e '.schemas[]' "$GITHUB_WORKSPACE/schemas.yml" || true)
             if [ ${#ordered_layers[@]} -eq 0 ]; then
               echo "Warning: schemas.yml exists but has no valid schemas, using detected layers"
-              mapfile -t ordered_layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+              ordered_layers=("${layers[@]}")
             fi
           else
-            echo "Warning: schemas.yml not found at $GITHUB_WORKSPACE/schemas.yml, using detected layers"
-            mapfile -t ordered_layers < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')
+            echo "Warning: schemas.yml not found, using detected layers"
+            ordered_layers=("${layers[@]}")
           fi
-          if [ ${#ordered_layers[@]} -eq 0 ]; then
-            echo "Error: No migration folders found, skipping deployment"
-            exit 0
-          fi
-          echo "Detected layers: $(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')"
+          echo "Detected layers: $(echo "${layers[@]}" | tr ' ' ' ')"
           echo "Processing layers in order: ${ordered_layers[@]}"
           for layer in "${ordered_layers[@]}"; do
-            if [ -d "$GITHUB_WORKSPACE/$layer/migrations/scripts" ]; then
+            if [[ " ${layers[*]} " =~ " ${layer} " ]]; then
               echo "Step 1: Processing $layer layer"
               var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
               if [ -f "$var_file" ] && [ -r "$var_file" ]; then
@@ -113,7 +113,7 @@ jobs:
                 echo "Error: $var_file not found or not readable, skipping $layer"
               fi
             else
-              echo "Warning: No scripts folder found for $layer, skipping deployment"
+              echo "Warning: Layer $layer not found, skipping"
             fi
           done
 
