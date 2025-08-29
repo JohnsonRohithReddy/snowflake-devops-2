@@ -96,35 +96,53 @@ jobs:
             set -x  # Enable debugging
             log_file="$GITHUB_WORKSPACE/version_log.yml"
             current_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-            # Check if scripts were applied in schemachange output
-            if echo "$schemachange_output" | grep -q "scripts_applied=[1-9]"; then
-              applied="true"
+            # Check if this is a manual trigger
+            if [ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]; then
+              # Manual trigger with no schema changes
+              new_entry="  - version: \"manual_trigger\""
+              new_entry="$new_entry\n    branch: \"test\"\n    timestamp: \"$current_time\"\n    applied: \"no versions updated\""
+              if [ -f "$log_file" ]; then
+                tmp_file=$(mktemp)
+                echo "versions:" > "$tmp_file"
+                echo -e "$new_entry" >> "$tmp_file"
+                yq eval '.versions[]' "$log_file" | tail -n +2 >> "$tmp_file" 2>/dev/null || echo "Warning: Failed to append existing versions"
+                mv "$tmp_file" "$log_file"
+              else
+                echo "versions:" > "$log_file"
+                echo -e "$new_entry" >> "$log_file"
+              fi
+              echo "Updated version log with manual trigger for test (no versions updated)"
             else
-              applied="false"
-            fi
-            echo "Debug: Applied status: $applied"
-            # Generate new entry
-            new_entry="  - version: \"1.0.1\""
-            if [ -f "$log_file" ]; then
-              current_version=$(yq eval '.versions[0].version' "$log_file" 2>/dev/null || echo "1.0.0")
-              new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
-              new_entry="  - version: \"$new_version\""
-            fi
-            new_entry="$new_entry\n    branch: \"test\"\n    timestamp: \"$current_time\"\n    applied: \"$applied\""
-            echo "Debug: New entry: $new_entry"
-            # Create or update the log file
-            if [ -f "$log_file" ]; then
-              tmp_file=$(mktemp)
-              echo "versions:" > "$tmp_file"
-              echo -e "$new_entry" >> "$tmp_file"
-              yq eval '.versions[]' "$log_file" | tail -n +2 >> "$tmp_file" 2>/dev/null || echo "Warning: Failed to append existing versions"
-              mv "$tmp_file" "$log_file"
-            else
-              echo "versions:" > "$log_file"
-              echo -e "$new_entry" >> "$log_file"
+              # Push trigger with schema change check
+              if echo "$schemachange_output" | grep -q "scripts_applied=[1-9]"; then
+                applied="true"
+              else
+                applied="false"
+              fi
+              echo "Debug: Applied status: $applied"
+              # Generate new entry
+              new_entry="  - version: \"1.0.1\""
+              if [ -f "$log_file" ]; then
+                current_version=$(yq eval '.versions[0].version' "$log_file" 2>/dev/null || echo "1.0.0")
+                new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
+                new_entry="  - version: \"$new_version\""
+              fi
+              new_entry="$new_entry\n    branch: \"test\"\n    timestamp: \"$current_time\"\n    applied: \"$applied\""
+              echo "Debug: New entry: $new_entry"
+              # Create or update the log file
+              if [ -f "$log_file" ]; then
+                tmp_file=$(mktemp)
+                echo "versions:" > "$tmp_file"
+                echo -e "$new_entry" >> "$tmp_file"
+                yq eval '.versions[]' "$log_file" | tail -n +2 >> "$tmp_file" 2>/dev/null || echo "Warning: Failed to append existing versions"
+                mv "$tmp_file" "$log_file"
+              else
+                echo "versions:" > "$log_file"
+                echo -e "$new_entry" >> "$log_file"
+              fi
+              echo "Updated version log with version $new_version for test (applied: $applied)"
             fi
             set +x  # Disable debugging
-            echo "Updated version log with version $new_version for test (applied: $applied)"
           fi
 
       - name: Output log file location
