@@ -65,7 +65,7 @@ jobs:
               if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
                 echo "Error: Invalid or empty vars JSON: $vars"
                 cat debug_$layer.log
-                vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
+                vars='{"sf_database": "SF_DEVOPS_TEST_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
               fi
               database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
               schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
@@ -93,29 +93,26 @@ jobs:
           if [ "$GITHUB_REF_NAME" == "test" ]; then
             log_file="$GITHUB_WORKSPACE/version_log.yml"
             current_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-            applied="true"
-            for output in "${schemachange_output[@]}"; do
-              if [[ "$output" =~ "scripts_applied=[1-9]" ]]; then
-                applied="true"
-                break
-              else
-                applied="false"
-              fi
-            done
+            # Check if scripts were applied in schemachange output
+            if echo "$schemachange_output" | grep -q "scripts_applied=[1-9]"; then
+              applied="true"
+            else
+              applied="false"
+            fi
             # Generate new entry
-            new_entry="  - version: \"1.0.1\"";
+            new_entry="  - version: \"1.0.1\""
             if [ -f "$log_file" ]; then
-              current_version=$(yq eval '.versions[0].version' "$log_file" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "1.0.0")
+              current_version=$(yq eval '.versions[0].version' "$log_file" 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "1.0.0")
               new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
               new_entry="  - version: \"$new_version\""
             fi
             new_entry="$new_entry\n    branch: \"test\"\n    timestamp: \"$current_time\"\n    applied: \"$applied\""
-            # Load existing log or start fresh
+            # Create or update the log file
             if [ -f "$log_file" ]; then
               tmp_file=$(mktemp)
               echo "versions:" > "$tmp_file"
               echo -e "$new_entry" >> "$tmp_file"
-              yq eval '.versions' "$log_file" | tail -n +2 >> "$tmp_file"
+              yq eval '.versions[]' "$log_file" | tail -n +2 >> "$tmp_file"
               mv "$tmp_file" "$log_file"
             else
               echo "versions:" > "$log_file"
@@ -145,7 +142,7 @@ jobs:
         run: |
           if [ -f "$GITHUB_WORKSPACE/version_log.yml" ]; then
             git config --global user.name "JohnsonRohithReddy"
-            git config --global user.email "johnson.gali@anblicks.com"  # Replace with your GitHub email
+            git config --global user.email "your-email@example.com"  # Replace with your GitHub email
             git add "$GITHUB_WORKSPACE/version_log.yml"
             git commit -m "Update version_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
             # Use PAT with username for push
