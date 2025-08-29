@@ -3,7 +3,6 @@ name: snowflake-devops-demo
 on:
   push:
     branches:
-      - dev
       - test
       - main
     paths:
