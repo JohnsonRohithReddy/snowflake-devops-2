@@ -29,6 +29,8 @@ jobs:
           # Install yq for YAML processing
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
+          # Verify yq installation
+          yq --version
 
       - name: Deploy layer changes
         env:
@@ -91,6 +93,7 @@ jobs:
           done
           # Generate version_log.yml only for test branch
           if [ "$GITHUB_REF_NAME" == "test" ]; then
+            set -x  # Enable debugging
             log_file="$GITHUB_WORKSPACE/version_log.yml"
             current_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
             # Check if scripts were applied in schemachange output
@@ -99,25 +102,28 @@ jobs:
             else
               applied="false"
             fi
+            echo "Debug: Applied status: $applied"
             # Generate new entry
             new_entry="  - version: \"1.0.1\""
             if [ -f "$log_file" ]; then
-              current_version=$(yq eval '.versions[0].version' "$log_file" 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "1.0.0")
+              current_version=$(yq eval '.versions[0].version' "$log_file" 2>/dev/null || echo "1.0.0")
               new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
               new_entry="  - version: \"$new_version\""
             fi
             new_entry="$new_entry\n    branch: \"test\"\n    timestamp: \"$current_time\"\n    applied: \"$applied\""
+            echo "Debug: New entry: $new_entry"
             # Create or update the log file
             if [ -f "$log_file" ]; then
               tmp_file=$(mktemp)
               echo "versions:" > "$tmp_file"
               echo -e "$new_entry" >> "$tmp_file"
-              yq eval '.versions[]' "$log_file" | tail -n +2 >> "$tmp_file"
+              yq eval '.versions[]' "$log_file" | tail -n +2 >> "$tmp_file" 2>/dev/null || echo "Warning: Failed to append existing versions"
               mv "$tmp_file" "$log_file"
             else
               echo "versions:" > "$log_file"
               echo -e "$new_entry" >> "$log_file"
             fi
+            set +x  # Disable debugging
             echo "Updated version log with version $new_version for test (applied: $applied)"
           fi
 
