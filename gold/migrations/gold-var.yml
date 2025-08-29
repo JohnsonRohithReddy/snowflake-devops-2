@@ -1,0 +1,4 @@
+variables:
+  sf_database: SF_DEVOPS_PROD_DB
+  sf_schema: gold
+  new_var: test_value

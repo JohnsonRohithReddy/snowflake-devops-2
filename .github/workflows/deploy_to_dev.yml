@@ -1,0 +1,86 @@
+name: snowflake-devops-demo
+
+on:
+  push:
+    branches:
+      - dev
+      - test
+      - main
+    paths:
+      - '**/migrations/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-layer-changes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Use Python 3.8.x
+        uses: actions/setup-python@v2.2.1
+        with:
+          python-version: 3.8.x
+
+      - name: Install dependencies
+        run: pip install pyyaml schemachange
+
+      - name: Deploy layer changes
+        env:
+          SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_ROLE: ${{ secrets.SF_ROLE }}
+          SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
+        run: |
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          # Get layers from Python script
+          echo "Checking for schemas.yml in $GITHUB_WORKSPACE/config/schemas.yml"
+          ordered_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
+          if [ $? -ne 0 ]; then
+            echo "Error: Failed to extract schemas, exiting"
+            exit 1
+          fi
+          # Split the newline-separated output into an array
+          mapfile -t layers < <(echo "$ordered_layers")
+          if [ ${#layers[@]} -eq 0 ]; then
+            echo "Error: No schemas extracted, exiting"
+            exit 1
+          fi
+          echo "Schemas extracted from schemas.yml: ${layers[@]}"
+          echo "Detected layers: $(find "$GITHUB_WORKSPACE" -maxdepth 1 -type d ! -name ".*" -exec sh -c 'test -d "{}/migrations" && echo {}' \; | sed 's|.*/||')"
+          echo "Processing layers in order: ${layers[@]}"
+          for layer in "${layers[@]}"; do
+            echo "Step 1: Processing $layer layer"
+            var_file="$GITHUB_WORKSPACE/$layer/migrations/${layer}-var.yml"
+            if [ -f "$var_file" ] && [ -r "$var_file" ]; then
+              echo "Parsing variables from $var_file"
+              vars=$(python $GITHUB_WORKSPACE/parse_vars.py "$var_file" 2> debug_$layer.log)
+              echo "Parsed vars: $vars"
+              if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
+                echo "Error: Invalid or empty vars JSON: $vars"
+                cat debug_$layer.log
+                vars='{"sf_database": "SF_DATABASE_TEST", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
+              fi
+              database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
+              schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
+              echo "Extracted database_name: $database_name"
+              echo "Extracted schema_name: $schema_name"
+              echo "Step 2: Running schemachange for $layer with vars: $vars"
+              ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts
+              schemachange \
+                -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
+                -a "$SF_ACCOUNT" \
+                -u "$SF_USERNAME" \
+                -r "$SF_ROLE" \
+                -w "$SF_WAREHOUSE" \
+                -d "$database_name" \
+                -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
+                --create-change-history-table \
+                --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
+                --vars "$vars"
+            else
+              echo "Error: $var_file not found or not readable, skipping $layer"
+            fi
+          done
