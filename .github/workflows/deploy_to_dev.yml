@@ -145,7 +145,7 @@ jobs:
         run: |
           if [ -f "$GITHUB_WORKSPACE/version_log.yml" ]; then
             git config --global user.name "JohnsonRohithReddy"
-            git config --global user.email "your-email@example.com"  # Replace with your GitHub email
+            git config --global user.email "johnson.gali@anblicks.com"  # Replace with your GitHub email
             git add "$GITHUB_WORKSPACE/version_log.yml"
             git commit -m "Update version_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
             # Use PAT with username for push
