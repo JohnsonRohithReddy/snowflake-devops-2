@@ -1,4 +1,4 @@
 variables:
-  sf_database: SF_DEVOPS_TEST_DB
+  sf_database: SF_DEVOPS_DEV_DB
   sf_schema: platinum
   new_var: test_value
