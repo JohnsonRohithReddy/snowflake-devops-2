@@ -24,7 +24,11 @@ jobs:
           python-version: 3.8.x
 
       - name: Install dependencies
-        run: pip install pyyaml schemachange
+        run: |
+          pip install pyyaml schemachange
+          # Install yq for YAML processing
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Deploy layer changes
         env:
@@ -35,17 +39,17 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          # Get layers from Python script
+          # Get layers from Python script and filter valid schemas
           echo "Checking for schemas.yml in $GITHUB_WORKSPACE/config/schemas.yml"
-          ordered_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
+          raw_layers=$(python $GITHUB_WORKSPACE/config/get_schemas.py)
           if [ $? -ne 0 ]; then
             echo "Error: Failed to extract schemas, exiting"
             exit 1
           fi
-          # Split the newline-separated output into an array
-          mapfile -t layers < <(echo "$ordered_layers")
+          # Filter out debug lines and split into array
+          mapfile -t layers < <(echo "$raw_layers" | grep -E '^[a-zA-Z0-9_-]+$' || true)
           if [ ${#layers[@]} -eq 0 ]; then
-            echo "Error: No schemas extracted, exiting"
+            echo "Error: No valid schemas extracted, exiting"
             exit 1
           fi
           echo "Schemas extracted from schemas.yml: ${layers[@]}"
@@ -61,7 +65,7 @@ jobs:
               if [ -z "$vars" ] || ! echo "$vars" | python -c "import json; json.loads(input())" 2>/dev/null; then
                 echo "Error: Invalid or empty vars JSON: $vars"
                 cat debug_$layer.log
-                vars='{"sf_database": "SF_DATABASE_TEST", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
+                vars='{"sf_database": "SF_DEVOPS_DEV_DB", "sf_schema": "'$layer'", "new_var": "'$layer'_value"}'
               fi
               database_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_database'])")
               schema_name=$(echo "$vars" | python -c "import json, sys; print(json.loads(sys.stdin.read())['sf_schema'])")
@@ -69,7 +73,7 @@ jobs:
               echo "Extracted schema_name: $schema_name"
               echo "Step 2: Running schemachange for $layer with vars: $vars"
               ls -la "$GITHUB_WORKSPACE/$layer/migrations/scripts"  # Debug: List scripts
-              schemachange \
+              schemachange_output=$(schemachange \
                 -f "$GITHUB_WORKSPACE/$layer/migrations/scripts" \
                 -a "$SF_ACCOUNT" \
                 -u "$SF_USERNAME" \
@@ -79,8 +83,79 @@ jobs:
                 -c "$database_name.SCHEMACHANGE.CHANGE_HISTORY" \
                 --create-change-history-table \
                 --config-folder "$GITHUB_WORKSPACE/$layer/migrations/config" \
-                --vars "$vars"
+                --vars "$vars" 2>&1)
+              echo "schemachange output: $schemachange_output"
             else
               echo "Error: $var_file not found or not readable, skipping $layer"
             fi
           done
+          # Generate version_log.yml only for test branch
+          if [ "$GITHUB_REF_NAME" == "test" ]; then
+            log_file="$GITHUB_WORKSPACE/version_log.yml"
+            current_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            applied="true"
+            for output in "${schemachange_output[@]}"; do
+              if [[ "$output" =~ "scripts_applied=[1-9]" ]]; then
+                applied="true"
+                break
+              else
+                applied="false"
+              fi
+            done
+            # Generate new entry
+            new_entry="  - version: \"1.0.1\"";
+            if [ -f "$log_file" ]; then
+              current_version=$(yq eval '.versions[0].version' "$log_file" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "1.0.0")
+              new_version=$(echo "$current_version" | awk -F. '{$NF++; print $1"."$2"."$NF}')
+              new_entry="  - version: \"$new_version\""
+            fi
+            new_entry="$new_entry\n    branch: \"test\"\n    timestamp: \"$current_time\"\n    applied: \"$applied\""
+            # Load existing log or start fresh
+            if [ -f "$log_file" ]; then
+              tmp_file=$(mktemp)
+              echo "versions:" > "$tmp_file"
+              echo -e "$new_entry" >> "$tmp_file"
+              yq eval '.versions' "$log_file" | tail -n +2 >> "$tmp_file"
+              mv "$tmp_file" "$log_file"
+            else
+              echo "versions:" > "$log_file"
+              echo -e "$new_entry" >> "$log_file"
+            fi
+            echo "Updated version log with version $new_version for test (applied: $applied)"
+          fi
+
+      - name: Output log file location
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/version_log.yml" ]; then
+            echo "Version log generated at $GITHUB_WORKSPACE/version_log.yml"
+            cat "$GITHUB_WORKSPACE/version_log.yml"
+          else
+            echo "No version log generated"
+          fi
+
+      - name: Upload version log as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: version-log
+          path: ${{ github.workspace }}/version_log.yml
+
+      - name: Commit and push version log with PAT
+        if: github.ref_name == 'test'  # Only run for test branch
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/version_log.yml" ]; then
+            git config --global user.name "JohnsonRohithReddy"
+            git config --global user.email "your-email@example.com"  # Replace with your GitHub email
+            git add "$GITHUB_WORKSPACE/version_log.yml"
+            git commit -m "Update version_log.yml with latest deployment [skip ci]" || echo "No changes to commit"
+            # Use PAT with username for push
+            git push https://JohnsonRohithReddy:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/JohnsonRohithReddy/snowflake-devops-2.git HEAD:test || {
+              echo "Push failed. Check PAT in Secrets (ensure 'repo' scope) or repo write permissions for JohnsonRohithReddy."
+              exit 1
+            }
+            echo "Pushed version_log.yml to test branch"
+          else
+            echo "No version log to commit"
+          fi
+        env:
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
